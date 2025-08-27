@@ -1,6 +1,7 @@
 package escuelaing.edu.co.httpserver;
 
 import annotations.GetMapping;
+import annotations.RequestParam;
 import annotations.RestController;
 import java.net.*;
 import java.io.*;
@@ -101,13 +102,21 @@ public class HttpServer {
         HttpResponse res = new HttpResponse();
         String servicePath = requri.getPath().substring(4);
         Method s = services.get(servicePath);
-        
+        RequestParam rp = (RequestParam) s.getParameterAnnotations()[0][0];
+
+        String[] argsValues = new String[]{};
+        if(requri.getQuery() == null){
+            argsValues = new String[] {rp.defaultValue()};
+        }
+        else{
+            String queryParamName = rp.value();
+            argsValues = new String[]{req.getValue(queryParamName)};
+        }
         String header = "HTTP/1.1 200 OK\n\r"
                 + "content-type: text/html\n\r"
                 + "\n\r";
-        
         try {
-            return header + s.invoke(null);
+            return header + s.invoke(null, argsValues);
         } catch (IllegalAccessException ex) {
             Logger.getLogger(HttpServer.class.getName()).log(Level.SEVERE, null, ex);
         } catch (InvocationTargetException ex) {
