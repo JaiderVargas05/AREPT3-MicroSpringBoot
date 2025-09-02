@@ -26,6 +26,7 @@ public class Microspringboot {
         for (int i = 0; i < controllers.size(); i++) {
             controllerNames[i] = controllers.get(i).getName();
         }
+        HttpServer.staticfiles("src/main/resources/static");
         HttpServer.runServer(controllerNames);
     }
 }

@@ -16,7 +16,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class HttpServer {
-        private static final Map<String, String> mimeTypes = new HashMap<String, String>() {
+
+    private static final Map<String, String> mimeTypes = new HashMap<String, String>() {
         {
             put("html", "text/html");
             put("css", "text/css");
@@ -29,6 +30,7 @@ public class HttpServer {
 
     public static Map<String, Method> services = new HashMap();
     private static Path basePath;
+
     public static void runServer(String[] args) throws IOException, URISyntaxException, ClassNotFoundException {
         ServerSocket serverSocket = null;
         loadServices(args);
@@ -73,7 +75,7 @@ public class HttpServer {
             }
 
             if (requri.getPath().startsWith("/app")) {
-                out.write(invokeService(requri).getBytes());
+                invokeService(requri, out);
             } else {
                 readFileService(requri, out);
             }
@@ -84,7 +86,8 @@ public class HttpServer {
         }
         serverSocket.close();
     }
-        private static String getMymeType(String fileName) {
+
+    private static String getMymeType(String fileName) {
         String[] parts = fileName.split("\\.");
         String extention = parts[parts.length - 1];
         String mymeType = mimeTypes.get(extention);
@@ -93,6 +96,7 @@ public class HttpServer {
         }
         return mymeType;
     }
+
     private static void readFileService(URI requestUri, OutputStream out) throws IOException {
         String fileName = requestUri.getPath();
         String output = "";
@@ -127,13 +131,14 @@ public class HttpServer {
         }
 
     }
-    public static void loadServices(String args[]){
+
+    public static void loadServices(String args[]) {
         try {
             Class c = Class.forName(args[0]);
-            if(c.isAnnotationPresent(RestController.class)){
+            if (c.isAnnotationPresent(RestController.class)) {
                 Method[] methods = c.getDeclaredMethods();
-                for(Method m : methods){
-                    if(m.isAnnotationPresent(GetMapping.class)){
+                for (Method m : methods) {
+                    if (m.isAnnotationPresent(GetMapping.class)) {
                         String key = m.getAnnotation(GetMapping.class).value();
                         services.put(key, m);
                     }
@@ -144,13 +149,11 @@ public class HttpServer {
         }
     }
 
-
 //    public static void get(String path, Service s) {
 //        services.put(path, s);
 //    }
+    private static void invokeService(URI requri, OutputStream out) throws IOException {
 
-    private static String invokeService(URI requri) {
-        
         HttpRequest req = new HttpRequest(requri);
         HttpResponse res = new HttpResponse();
         String servicePath = requri.getPath().substring(4);
@@ -158,24 +161,44 @@ public class HttpServer {
         RequestParam rp = (RequestParam) s.getParameterAnnotations()[0][0];
 
         String[] argsValues = new String[]{};
-        if(requri.getQuery() == null){
-            argsValues = new String[] {rp.defaultValue()};
-        }
-        else{
+        if (requri.getQuery() == null) {
+            argsValues = new String[]{rp.defaultValue()};
+        } else {
             String queryParamName = rp.value();
             argsValues = new String[]{req.getValue(queryParamName)};
         }
-        String header = "HTTP/1.1 200 OK\n\r"
-                + "content-type: text/html\n\r"
-                + "\n\r";
+        String header = "HTTP/1.1 200 OK\r\n"
+                + "content-type: text/plain\r\n"
+                + "\r\n";
         try {
-            return header + s.invoke(null, argsValues);
+            String result = (String) s.invoke(null, argsValues);
+            byte[] body = result.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            out.write(header.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            out.write(body);
+            out.flush();
         } catch (IllegalAccessException ex) {
-            Logger.getLogger(HttpServer.class.getName()).log(Level.SEVERE, null, ex);
+            byte[] body = "ERROR".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            header
+                    = "HTTP/1.1 500 Internal Server Error\r\n"
+                    + "Content-Type: text/plain; charset=utf-8\r\n"
+                    + "Content-Length: " + body.length + "\r\n"
+                    + "Connection: close\r\n"
+                    + "\r\n";
+            out.write(header.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            out.write(body);
+            out.flush();
         } catch (InvocationTargetException ex) {
-            Logger.getLogger(HttpServer.class.getName()).log(Level.SEVERE, null, ex);
+            byte[] body = "ERROR".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            header
+                    = "HTTP/1.1 500 Internal Server Error\r\n"
+                    + "Content-Type: text/plain; charset=utf-8\r\n"
+                    + "Content-Length: " + body.length + "\r\n"
+                    + "Connection: close\r\n"
+                    + "\r\n";
+            out.write(header.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            out.write(body);
+            out.flush();
         }
-        return header + "ERROR";
     }
 
     public static void staticfiles(String route) {
