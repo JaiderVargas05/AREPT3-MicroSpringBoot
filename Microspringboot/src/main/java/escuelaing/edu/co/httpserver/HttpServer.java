@@ -7,15 +7,28 @@ import java.net.*;
 import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 public class HttpServer {
+        private static final Map<String, String> mimeTypes = new HashMap<String, String>() {
+        {
+            put("html", "text/html");
+            put("css", "text/css");
+            put("js", "application/javascript");
+            put("png", "image/png");
+            put("jpg", "image/jpeg");
+            put("jpeg", "image/jpeg");
+        }
+    };
 
     public static Map<String, Method> services = new HashMap();
-
+    private static Path basePath;
     public static void runServer(String[] args) throws IOException, URISyntaxException, ClassNotFoundException {
         ServerSocket serverSocket = null;
         loadServices(args);
@@ -37,7 +50,7 @@ public class HttpServer {
                 System.exit(1);
             }
 
-            PrintWriter out = new PrintWriter(clientSocket.getOutputStream(), true);
+            OutputStream out = new BufferedOutputStream(clientSocket.getOutputStream());
             BufferedReader in = new BufferedReader(
                     new InputStreamReader(
                             clientSocket.getInputStream()));
@@ -60,19 +73,59 @@ public class HttpServer {
             }
 
             if (requri.getPath().startsWith("/app")) {
-                outputLine = invokeService(requri);
+                out.write(invokeService(requri).getBytes());
             } else {
-                //Leo del disco
-
-                outputLine = defaultResponse();
+                readFileService(requri, out);
             }
-            out.println(outputLine);
 
             out.close();
             in.close();
             clientSocket.close();
         }
         serverSocket.close();
+    }
+        private static String getMymeType(String fileName) {
+        String[] parts = fileName.split("\\.");
+        String extention = parts[parts.length - 1];
+        String mymeType = mimeTypes.get(extention);
+        if (mymeType == null || mymeType.isEmpty()) {
+            mymeType = "application/octet-stream";
+        }
+        return mymeType;
+    }
+    private static void readFileService(URI requestUri, OutputStream out) throws IOException {
+        String fileName = requestUri.getPath();
+        String output = "";
+
+        if (fileName.equals("/")) {
+            fileName = "index.html";
+        }
+
+        Path filePath = Paths.get(basePath.toString(), fileName);
+        if (!Files.exists(filePath) || Files.isDirectory(filePath)) {
+            output = "HTTP/1.1 404 Not Found\n\r"
+                    + "content-type: text/html\n\r"
+                    + "\n\r"
+                    + "<h1>File not found 404</h1>";
+            byte[] body = "<h1>File not found 404</h1>".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+
+            out.write(output.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            out.write(body);
+            out.flush();
+            return;
+        } else {
+            String mymeType = getMymeType(filePath.getFileName().toString());
+            byte[] fileBytes = Files.readAllBytes(filePath);
+            output = "HTTP/1.1 200 OK\r\n"
+                    + "Content-Type: " + mymeType + "\r\n"
+                    + "Content-Length: " + fileBytes.length + "\r\n"
+                    + "\r\n";
+            out.write(output.getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+            out.write(fileBytes);
+            out.flush();
+
+        }
+
     }
     public static void loadServices(String args[]){
         try {
@@ -125,7 +178,8 @@ public class HttpServer {
         return header + "ERROR";
     }
 
-    public static void staticfiles(String localFilesPath) {
+    public static void staticfiles(String route) {
+        basePath = Paths.get(route).toAbsolutePath().normalize();
     }
 
     public static void start(String[] args) throws IOException, URISyntaxException, ClassNotFoundException {
